@@ -64,8 +64,14 @@ public class Downloader extends JFrame {
   }
 
   private void doDownloads() {
-    for (int i = 0; i < this.downloads.length; i++) {
-      doDownload(i);
+    for (int i = 0; i < downloads.length; i++) {
+      int finalI = i;
+      new Thread(new Runnable() {
+        @Override
+        public void run() {
+          doDownload(finalI);
+        }
+      }).start();
     }
   }
 
@@ -82,23 +88,45 @@ public class Downloader extends JFrame {
           break;
         } else {
           byteList.add((byte) read);
-          bar.setValue(byteList.size());
+          queueProgressInfo(byteList.size(), bar);
           if ((byteList.size() % 1000) == 0) {
-            System.out.println( byteList.size() + " bytes read");
+            System.out.println( byteList.size() + " bytes read for download of: " + this.downloads[i].getName());
           }
-        } 
+        }
       }
       bytes = new byte[byteList.size()];
       for (int j = 0; j < bytes.length; j++) {
         bytes[j] = byteList.get(j);
       }
       final BufferedImage image = ImageIO.read(new ByteArrayInputStream(bytes));
-      showImage(image,this.downloads[i].getPath());
+      queueImageUpdate(image, this.downloads[i].getPath());
     } catch (final IOException e) {
       e.printStackTrace();
     }
     System.out.println( this.downloads[i] + " DONE");
     return bytes;
+  }
+
+  public void queueProgressInfo(final int value, final JProgressBar bar) {
+    SwingUtilities.invokeLater(new Runnable() {
+      @Override
+      public void run() {
+        setProgress(value, bar);
+      }
+    });
+  }
+
+  public void queueImageUpdate(final BufferedImage image, final String name) {
+    SwingUtilities.invokeLater(new Runnable() {
+      @Override
+      public void run() {
+        showImage(image, name);
+      }
+    });
+  }
+
+  public void setProgress(int progress, JProgressBar bar) {
+    bar.setValue(progress);
   }
 
   private void showImage(final BufferedImage image, final String name) {
@@ -124,16 +152,17 @@ public class Downloader extends JFrame {
     }
   }
 
-  public static void launch() {
-    final String[] names = new String[] { "images/pyramids.jpg", "images/pagodas.jpg", "images/bug.jpg" };
-    final File[] downloads = new File[names.length];
-    for (int i = 0; i < downloads.length; i++) {
-      downloads[i] = new File(names[i]);
-    }
-    new Downloader(downloads);
-  }
-
   public static void main(final String[] args) {
-    SwingUtilities.invokeLater(()->launch());
+    SwingUtilities.invokeLater(new Runnable() {
+      @Override
+      public void run() {
+        final String[] names = new String[]{"images/pyramids.jpg", "images/pagodas.jpg", "images/bug.jpg"};
+        final File[] downloads = new File[names.length];
+        for(int i = 0; i < downloads.length; i++) {
+          downloads[i] = new File(names[i]);
+        }
+        new Downloader(downloads);
+      }
+    });
   }
 }
