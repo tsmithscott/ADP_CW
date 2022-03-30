@@ -25,12 +25,17 @@ public class Downloader extends JFrame {
 
   private final File[] downloads;
   private final List<JProgressBar> bars;
+  private final List<Boolean> cancelled = new ArrayList<>();
 
   public Downloader(final File[] downloads) {
-    setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+    setDefaultCloseOperation(EXIT_ON_CLOSE);
 
     final JPanel progPanel = new JPanel(new GridLayout(0,1));
     this.downloads = downloads;
+    for (int i=0; i < downloads.length; i++) {
+      this.cancelled.add(i, false);
+    }
+
     this.bars = new ArrayList<>(downloads.length);
     for (int i = 0; i < downloads.length; i++) {
       final JProgressBar bar = new JProgressBar();
@@ -41,7 +46,7 @@ public class Downloader extends JFrame {
       border.add(bar);
       final JButton cancelButton = new JButton("X");
       final int j = i;
-      cancelButton.addActionListener((ev)->doCancel(j));
+      cancelButton.addActionListener((ev)->setCancelled(j));
       border.add(cancelButton, BorderLayout.EAST);
       progPanel.add(border);
     }
@@ -59,8 +64,8 @@ public class Downloader extends JFrame {
     setVisible(true);
   }
 
-  private void doCancel(final int i) {
-    System.out.println( "Cancelling " + i);
+  private synchronized void setCancelled(final int j) {
+    this.cancelled.set(j, true);
   }
 
   private void doDownloads() {
@@ -75,14 +80,24 @@ public class Downloader extends JFrame {
     }
   }
 
-  private byte[] doDownload(final int i) {
+  private void doDownload(final int i) {
+    synchronized (this) {
+      this.cancelled.set(i, false);
+    }
     System.out.println( "Doing: " + this.downloads[i]);
     final JProgressBar bar = this.bars.get(i);
-    byte[] bytes = null;
+    byte[] bytes;
     try {
       final InputStream is = Network.getInputStreamForDownload(this.downloads[i]);
-      final ArrayList<Byte> byteList = new ArrayList<Byte>(1024);
+      final ArrayList<Byte> byteList = new ArrayList<>(1024);
       while(true) {
+        synchronized (this) {
+          if (this.cancelled.get(i)) {
+            queueCancel(i, bar);
+            System.out.println(this.downloads[i].getName() + " cancelled successfully");
+            break;
+          }
+        }
         final int read = is.read();
         if (read < 0) {
           break;
@@ -104,14 +119,13 @@ public class Downloader extends JFrame {
       e.printStackTrace();
     }
     System.out.println( this.downloads[i] + " DONE");
-    return bytes;
   }
 
   public void queueProgressInfo(final int value, final JProgressBar bar) {
     SwingUtilities.invokeLater(new Runnable() {
       @Override
       public void run() {
-        setProgress(value, bar);
+        doProgress(value, bar);
       }
     });
   }
@@ -120,16 +134,25 @@ public class Downloader extends JFrame {
     SwingUtilities.invokeLater(new Runnable() {
       @Override
       public void run() {
-        showImage(image, name);
+        doShowImage(image, name);
       }
     });
   }
 
-  public void setProgress(int progress, JProgressBar bar) {
+  public void queueCancel(final int file_index, final JProgressBar bar) {
+    SwingUtilities.invokeLater(new Runnable() {
+      @Override
+      public void run() {
+        doCancel(file_index, bar);
+      }
+    });
+  }
+
+  public void doProgress(int progress, JProgressBar bar) {
     bar.setValue(progress);
   }
 
-  private void showImage(final BufferedImage image, final String name) {
+  private void doShowImage(BufferedImage image, String name) {
     final JFrame iw = new JFrame(name);
     iw.setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     final ImagePanel ip = new ImagePanel();
@@ -137,6 +160,11 @@ public class Downloader extends JFrame {
     iw.add(ip);
     iw.pack();
     iw.setVisible(true);
+  }
+
+  private void doCancel(final int i, final JProgressBar bar) {
+    System.out.println( "Cancelling " + i);
+    bar.setValue(0);
   }
 
   private static class ImagePanel extends JComponent {
