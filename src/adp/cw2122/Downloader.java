@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
@@ -74,18 +76,22 @@ public class Downloader extends JFrame {
       new Thread(new Runnable() {
         @Override
         public void run() {
-          doDownload(finalI);
+          try {
+            doDownload(finalI);
+          } catch (InterruptedException e) {
+            e.printStackTrace();
+          }
         }
       }).start();
     }
   }
 
-  private void doDownload(final int i) {
+  private void doDownload(final int i) throws InterruptedException {
     synchronized (this) {
       this.cancelled.set(i, false);
     }
     System.out.println( "Doing: " + this.downloads[i]);
-    final JProgressBar bar = this.bars.get(i);
+    final JProgressBar bar = queueGetBar(i);
     byte[] bytes;
     try {
       final InputStream is = Network.getInputStreamForDownload(this.downloads[i]);
@@ -121,6 +127,20 @@ public class Downloader extends JFrame {
     System.out.println( this.downloads[i] + " DONE");
   }
 
+  public JProgressBar queueGetBar(final int index) throws InterruptedException {
+    final AtomicReference<JProgressBar> result = new AtomicReference<>();
+    final CountDownLatch latch = new CountDownLatch(1);
+    SwingUtilities.invokeLater(new Runnable() {
+      @Override
+      public void run() {
+        result.set(doGetBar(index));
+        latch.countDown();
+      }
+    });
+    latch.await();
+    return result.get();
+  }
+
   public void queueProgressInfo(final int value, final JProgressBar bar) {
     SwingUtilities.invokeLater(new Runnable() {
       @Override
@@ -146,6 +166,10 @@ public class Downloader extends JFrame {
         doCancel(file_index, bar);
       }
     });
+  }
+
+  public JProgressBar doGetBar(int index) {
+    return this.bars.get(index);
   }
 
   public void doProgress(int progress, JProgressBar bar) {
