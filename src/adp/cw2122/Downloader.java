@@ -187,6 +187,7 @@ public class Downloader extends JFrame {
   }
 
   private void doCancel(final int i, final JProgressBar bar) {
+    System.out.println(java.awt.EventQueue.isDispatchThread());
     System.out.println( "Cancelling " + i);
     bar.setValue(0);
   }
